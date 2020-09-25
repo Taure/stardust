@@ -1,16 +1,21 @@
 -module(stardust_fcm_srv).
 -behaviour(gen_server).
+-behaviour(poolboy_worker).
 
 %% API
--export([start_link/0]).
+-export([start_link/1]).
 
 %% gen_server callbacks
 -export([init/1,
-         handle_call/3, handle_cast/2, handle_info/2,
-	 terminate/2, code_change/3, format_status/2]).
--export([send/3]).
+         handle_call/3,
+		 handle_cast/2,
+		 handle_info/2,
+	     terminate/2, 
+		 code_change/3, 
+		 format_status/2]).
 
--define(SERVER, ?MODULE).
+-export([send/2]).
+
 -define(TTL, 1800000).
 
 -include("stardust.hrl").
@@ -22,21 +27,21 @@
 %%% API
 %%%===================================================================
 
--spec send(binary(), list(binary()), map()) -> list().
-send(ProjectId, DeviceTokens, FCMobj) ->
-    [gen_server:cast(?MODULE, {send, {ProjectId, DeviceToken, FCMobj}}) || DeviceToken <- DeviceTokens].
+-spec send(binary(), map()) -> list().
+send(ProjectId, FCMobj) ->
+	gen_server:call(?MODULE, {send, {ProjectId, FCMobj}}).
 
 %%--------------------------------------------------------------------
 %% @doc
 %% Starts the server
 %% @end
 %%--------------------------------------------------------------------
--spec start_link() -> {ok, Pid :: pid()} |
+-spec start_link(term()) -> {ok, Pid :: pid()} |
 		      {error, Error :: {already_started, pid()}} |
 		      {error, Error :: term()} |
 		      ignore.
-start_link() ->
-    gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
+start_link(Args) ->
+	gen_server:start_link(?MODULE, Args, []).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -53,10 +58,10 @@ start_link() ->
 			      {ok, State :: term(), hibernate} |
 			      {stop, Reason :: term()} |
 			      ignore.
-init(ServiceAccount) ->
+init([ServiceAccount]) ->
     process_flag(trap_exit, true),
-    gen_server:cast(?SERVER, {start, ServiceAccount}),
-    {ok, #state{}}.
+    gen_server:cast(?MODULE, {start, ServiceAccount}),
+    {ok, #state{service_account = ServiceAccount}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -73,9 +78,9 @@ init(ServiceAccount) ->
 			 {noreply, NewState :: term(), hibernate} |
 			 {stop, Reason :: term(), Reply :: term(), NewState :: term()} |
 			 {stop, Reason :: term(), NewState :: term()}.
-handle_call(_Request, _From, State) ->
-    Reply = ok,
-    {reply, Reply, State}.
+handle_call({send, ProjectId, FCMobj}, _From, State) ->
+    Reply = firebase_message:send(ProjectId, State#state.access_token, FCMobj),
+	{reply, Reply, State}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -88,10 +93,6 @@ handle_call(_Request, _From, State) ->
 			 {noreply, NewState :: term(), Timeout :: timeout()} |
 			 {noreply, NewState :: term(), hibernate} |
 			 {stop, Reason :: term(), NewState :: term()}.
-handle_cast({send, {ProjectId, DeviceToken, Message}}, State) ->
-    Token = token(Account),
-    send_push(State#state.con, Token, DeviceToken, Message, BundleId, ApnsType),
-    {noreply, State};
 handle_cast({start, ServiceAccount}, State) ->
     case firebase_oauth2:service_account_fcm(ServiceAccount) of
         #{status := {200, _}, body := Body} ->
@@ -99,7 +100,8 @@ handle_cast({start, ServiceAccount}, State) ->
             timer:apply_after(?TTL, gen_server, cast, [{start, ServiceAccount}]),
             {noreply, State#state{service_account = ServiceAccount, access_token = Jwt}};
         Reason ->
-            ?WARNING("Failed to auth FCM: ~p", [Reason])
+            ?WARNING("Failed to auth FCM: ~p", [Reason]),
+            {noreply, State}
     end;
 handle_cast(Request, State) ->
     ?WARNING("UNEXPECTED CAST: ~p State: ~p", [Request, State]),

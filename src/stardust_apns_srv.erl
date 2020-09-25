@@ -1,40 +1,55 @@
 -module(stardust_apns_srv).
 -behaviour(gen_server).
+-behaviour(poolboy_worker).
 
 %% API
--export([start_link/0]).
+-export([start_link/1]).
 
 %% gen_server callbacks
--export([init/1, handle_call/3, handle_cast/2, handle_info/2,
-	 terminate/2, code_change/3, format_status/2]).
+-export([init/1,
+         handle_call/3, 
+         handle_cast/2, 
+         handle_info/2,
+	     terminate/2, 
+         code_change/3, 
+         format_status/2]).
 -export([send/5]).
 
 -define(SERVER, ?MODULE).
 -define(PING_TIMEOUT, 60000).
 
--include("simple_push.hrl").
+-include("stardust.hrl").
+-include_lib("public_key/include/public_key.hrl").
 
 -record(state, {con = undefined :: pid(),
-                ping}).
+                ping,
+                url,
+                port,
+                token,
+                ttl,
+                team_id,
+                p8_key,
+                key_id}).
 
 %%%===================================================================
 %%% API
 %%%===================================================================
 
-send(Account, DeviceTokens, Message, BundleId, ApnsType) ->
-    [gen_server:cast(?MODULE, {send, {Account, DeviceToken, Message, BundleId, ApnsType}}) ||DeviceToken <- DeviceTokens].
+send(Config, DeviceTokens, Message, BundleId, ApnsType) ->
+    [gen_server:cast(?MODULE, {send, {Config, DeviceToken, Message, BundleId, ApnsType}}) ||DeviceToken <- DeviceTokens].
 
 %%--------------------------------------------------------------------
 %% @doc
 %% Starts the server
 %% @end
 %%--------------------------------------------------------------------
--spec start_link() -> {ok, Pid :: pid()} |
+-spec start_link(term()) -> {ok, Pid :: pid()} |
 		      {error, Error :: {already_started, pid()}} |
 		      {error, Error :: term()} |
 		      ignore.
-start_link() ->
-    gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
+
+start_link(Args) ->
+    gen_server:start_link(?MODULE, Args, []).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -51,10 +66,13 @@ start_link() ->
 			      {ok, State :: term(), hibernate} |
 			      {stop, Reason :: term()} |
 			      ignore.
-init([]) ->
+init(Args) ->
     process_flag(trap_exit, true),
+    Key = proplists:get_value(key, Args),
+    Team = proplists:get_value(team, Args),
+    P8 = proplists:get_value(p8, Args),
     gen_server:cast(?SERVER, start),
-    {ok, #state{}}.
+    {ok, #state{team_id = Team, p8_key = P8, key_id = Key}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -89,14 +107,14 @@ handle_call(_Request, _From, State) ->
 			 {noreply, NewState :: term(), Timeout :: timeout()} |
 			 {noreply, NewState :: term(), hibernate} |
 			 {stop, Reason :: term(), NewState :: term()}.
-handle_cast({send, {Account, DeviceToken, Message, BundleId, ApnsType}}, State) ->
-    Token = token(Account),
-    send_push(State#state.con, Token, DeviceToken, Message, BundleId, ApnsType),
-    {noreply, State};
-handle_cast(start, State) ->
-    ets:new(apns_tokens, [named_table]),
-    NewState = set_ping(State#state{con = connect()}),
+handle_cast({send, {DeviceToken, Message, BundleId, ApnsType}}, State) ->
+    NewState = token(State),
+    send_push(State#state.con, DeviceToken, Message, BundleId, ApnsType, NewState),
     {noreply, NewState};
+handle_cast(start, State) ->
+    {ok, {Url, Port}} = application:get_env(stardust, apns_url),
+    NewState = set_ping(State#state{con = connect(Url, Port)}),
+    {noreply, NewState#state{url = erlang:list_to_binary(Url), port = Port}};
 handle_cast(Request, State) ->
     ?WARNING("UNEXPECTED CAST: ~p State: ~p", [Request, State]),
     {noreply, State}.
@@ -171,21 +189,20 @@ format_status(_Opt, Status) ->
 %%%===================================================================
 
 connect() ->
-    {ok, {Url, Port}} = application:get_env(simple_push, apns_url),
+    {ok, {Url, Port}} = application:get_env(stardust, apns_url),
     connect(Url, Port).
 connect(Host, Port) ->
     {ok, ConnPid} = h2_client:start_link(https, Host, Port, [{mode, binary}]),
     ConnPid.
 
-send_push(Con, JwtToken, DeviceToken, Message, BundleId, ApnsType) ->
+send_push(Con, DeviceToken, Message, BundleId, ApnsType, State) ->
     MsgId = uuid:uuid_to_string(uuid:get_v4()),
-    {ok, {APIUrl, _APIPort}} = application:get_env(simple_push, apns_url),
-    APIUrlBin = erlang:list_to_binary(APIUrl),
+    APIUrlBin = State#state.url,
     ReqHeaders = [{<<":method">>, <<"POST">>},
                   {<<":scheme">>, <<"https">>},
                   {<<":path">>, <<"/3/device/", DeviceToken/binary>>},
                   {<<":authority">>, APIUrlBin},
-                  {<<"authorization">>, JwtToken},
+                  {<<"authorization">>, State#state.token},
                   {<<"apns-priority">>, <<"10">>},
                   {<<"apns-topic">>, BundleId},
                   {<<"apns-push-type">>, ApnsType},
@@ -215,21 +232,22 @@ send_push(Con, JwtToken, DeviceToken, Message, BundleId, ApnsType) ->
             error
     end.
 
-token(Account) ->
-    case ets:lookup(apns_tokens, Account#account.id) of
-        [{_, Time, Jwt}] -> case erlang:monotonic_time(seconds) - Time > 1800 of
-                                true -> new_token(Account);
-                                false -> Jwt
-                           end;
-        [] -> new_token(Account)
+token(#state{ttl = undefined} = State) ->
+    new_token(State);
+token(#state{ttl = Time} = State) ->
+    case (erlang:monotonic(seconds) - Time) > 1800 of
+        true -> new_token(State);
+        false -> State
     end.
 
-new_token(Account) ->
-    Token = <<"bearer ", (simple_push_jwt:encode(Account#account.team_id,
-                                                 Account#account.p8_key,
-                                                 Account#account.key_id))/binary>>,
-    ets:insert(apns_tokens, {Account#account.id, erlang:monotonic_time(seconds), Token}),
-    Token.
+new_token(State) ->
+    Time = erlang:system_time(seconds),
+    Jwt = encode(State#state.team_id,
+                 State#state.p8_key,
+                 State#state.key_id,
+                 Time),
+    Token = <<"bearer ", Jwt/binary>>,
+    State#state{token = Token, ttl = Time}.
 
 set_ping(State = #state{ping = undefined}) ->
     State#state{ping = erlang:send_after(?PING_TIMEOUT, self(), ping)};
@@ -237,3 +255,25 @@ set_ping(State = #state{ping = Tref}) ->
     erlang:cancel_timer(Tref),
     State#state{ping = erlang:send_after(?PING_TIMEOUT, self(), ping)}.
 
+encode(ISS, Key, KeyId, Time) ->
+    Header = json:encode({[{alg, <<"ES256">>}, {typ, <<"JWT">>}, {kid, KeyId}]},
+                         [binary]),
+    Time = erlang:system_time(seconds),
+    Content = json:encode({[{iss, ISS}, {iat, Time}]}, [binary]),
+    Data = <<(do_encode(Header))/binary, $., (do_encode(Content))/binary>>,
+    ECPrivateKeyPem = case public_key:pem_decode(Key) of
+                          [Pem] -> Pem;
+                          [_, Pem] -> Pem
+                     end,
+    ECPrivateKey = public_key:pem_entry_decode(ECPrivateKeyPem),
+    Sign = do_encode(public_key:sign(Data, sha256, ECPrivateKey)),
+    <<Data/binary, $., Sign/binary>>.
+
+do_encode(X) -> strip_url(base64:encode(X), <<>>).
+
+strip_url(<<>>, Acc) -> Acc;
+strip_url(<<$=>>, Acc) -> Acc;
+strip_url(<<$=, $=>>, Acc) -> Acc;
+strip_url(<<$/, T/binary>>, Acc) -> strip_url(T, <<Acc/binary, $_>>);
+strip_url(<<$+, T/binary>>, Acc) -> strip_url(T, <<Acc/binary, $->>);
+strip_url(<<H, T/binary>>, Acc) -> strip_url(T, <<Acc/binary, H>>).
