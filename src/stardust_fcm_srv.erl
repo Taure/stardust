@@ -103,6 +103,9 @@ handle_cast({start, ServiceAccount}, State) ->
             ?WARNING("Failed to auth FCM: ~p", [Reason]),
             {noreply, State}
     end;
+handle_cast({send, ProjectId, FCMobj}, State) ->
+	firebase_message:send(ProjectId, State#state.access_token, FCMobj),
+	{noreply, State};
 handle_cast(Request, State) ->
     ?WARNING("UNEXPECTED CAST: ~p State: ~p", [Request, State]),
     {noreply, State}.

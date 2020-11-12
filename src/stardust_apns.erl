@@ -3,6 +3,7 @@
 -export([start/3,
          start/4,
          send/5,
+         async_send/5,
          stop/1]).
 
 start(KeyId, TeamId, P8) ->
@@ -20,11 +21,17 @@ start(KeyId, TeamId, P8, PoolboyConfig) ->
                   [{key, KeyId},
                    {team, TeamId},
                    {p8, P8}]).
-
+-spec send(binary(), binary(), map(), binary(), binary()) -> ok | {error, binary()}.
 send(KeyId, BundleId, Message, DeviceToken, ApnsType) ->
     poolboy:transaction(binary_to_atom(KeyId),
                         fun(Worker) ->
                             gen_server:call(Worker, {send, BundleId, Message, DeviceToken, ApnsType})
+                        end).
+
+async_send(KeyId, BundleId, Message, DeviceToken, ApnsType) ->
+    poolboy:transaction(binary_to_atom(KeyId),
+                        fun(Worker) ->
+                            gen_server:cast(Worker, {send, BundleId, Message, DeviceToken, ApnsType})
                         end).
 
 stop(KeyId) ->

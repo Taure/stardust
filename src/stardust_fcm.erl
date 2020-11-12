@@ -3,7 +3,8 @@
 -export([start/1,
          start/2,
          stop/1,
-         send/2]).
+         send/2,
+         async_send/2]).
 
 start(ServiceAccount) ->
     start(ServiceAccount, [{size, 5}, {max_overflow, 10}]).
@@ -16,8 +17,15 @@ start(#{<<"project_id">> := ProjectId} = ServiceAccount, PoolboyConfig) ->
 stop(ProjectId) ->
     poolboy:stop(ProjectId).
 
+-spec send(binary(), map()) -> ok | {error, integer(), atom()} | {error, term()}.
 send(ProjectId, FCMobj) ->
     poolboy:transaction(binary_to_atom(ProjectId),
                         fun(Worker) ->
                             gen_server:call(Worker, {send, ProjectId, FCMobj})
+                        end).
+
+async_send(ProjectId, FCMobj) ->
+    poolboy:transaction(binary_to_atom(ProjectId),
+                        fun(Worker) ->
+                            gen_server:cast(Worker, {send, ProjectId, FCMobj})
                         end).

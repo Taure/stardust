@@ -5,7 +5,9 @@
   {mod, {stardust_app, []}},
   {applications,
    [kernel,
-    stdlib
+    stdlib,
+    poolboy,
+    chatterbox
    ]},
   {env,[]},
   {modules, []},

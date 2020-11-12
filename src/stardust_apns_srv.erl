@@ -92,6 +92,10 @@ init(Args) ->
 handle_call(connect, _From, State) ->
     Pid = connect(),
     {reply, Pid, State#state{con = Pid}};
+handle_call({send, {DeviceToken, Message, BundleId, ApnsType}}, _From, State) ->
+    NewState = token(State),
+    Reply = send_push(State#state.con, DeviceToken, Message, BundleId, ApnsType, NewState),
+    {reply, Reply, NewState};
 handle_call(_Request, _From, State) ->
     Reply = ok,
     {reply, Reply, State}.
@@ -224,7 +228,7 @@ send_push(Con, DeviceToken, Message, BundleId, ApnsType, State) ->
                 Code  ->
                     ?WARNING("Result ~p: bundle-id: ~p  device-token: ~p apns-id: ~p RespBody: ~p",
                           [Code, BundleId, DeviceToken, MsgId, RespBody]),
-                    error
+                    {error, Code}
             end
     after 3000 ->
             ?WARNING("Timeout: bundle-id: ~p device-token: ~p apns-id: ~p",
