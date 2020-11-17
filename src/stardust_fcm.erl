@@ -17,7 +17,7 @@ start(#{<<"project_id">> := ProjectId} = ServiceAccount, PoolboyConfig) ->
 stop(ProjectId) ->
     poolboy:stop(ProjectId).
 
--spec send(binary(), map()) -> ok | {error, integer(), atom()} | {error, term()}.
+-spec send(binary(), map()) -> ok | {error, integer(), binary()} | {error, term()}.
 send(ProjectId, FCMobj) ->
     poolboy:transaction(binary_to_atom(ProjectId),
                         fun(Worker) ->

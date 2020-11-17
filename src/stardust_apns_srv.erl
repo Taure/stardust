@@ -224,11 +224,11 @@ send_push(Con, DeviceToken, Message, BundleId, ApnsType, State) ->
                 <<"200">> ->
                     ?INFO("Result 200: bundle-id: ~p device-token: ~p, apns-id ~p RespBody: ~p",
                             [BundleId, DeviceToken, MsgId, RespBody]),
-                    ok;
+                    {ok, 200, RespBody};
                 Code  ->
                     ?WARNING("Result ~p: bundle-id: ~p  device-token: ~p apns-id: ~p RespBody: ~p",
                           [Code, BundleId, DeviceToken, MsgId, RespBody]),
-                    {error, Code}
+                    {error, binary_to_integer(Code), RespBody}
             end
     after 3000 ->
             ?WARNING("Timeout: bundle-id: ~p device-token: ~p apns-id: ~p",

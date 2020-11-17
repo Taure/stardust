@@ -21,7 +21,7 @@ start(KeyId, TeamId, P8, PoolboyConfig) ->
                   [{key, KeyId},
                    {team, TeamId},
                    {p8, P8}]).
--spec send(binary(), binary(), map(), binary(), binary()) -> ok | {error, binary()}.
+-spec send(binary(), binary(), map(), binary(), binary()) -> ok | {error, integer(), binary()}.
 send(KeyId, BundleId, Message, DeviceToken, ApnsType) ->
     poolboy:transaction(binary_to_atom(KeyId),
                         fun(Worker) ->
