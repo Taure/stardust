@@ -1,8 +1,7 @@
 {application, stardust,
  [{description, "An OTP application"},
-  {vsn, "0.1.0"},
+  {vsn, "0.2.0"},
   {registered, []},
-  {mod, {stardust_app, []}},
   {applications,
    [kernel,
     stdlib,
@@ -10,8 +9,6 @@
     chatterbox
    ]},
   {env,[]},
-  {modules, []},
-
   {licenses, ["Apache 2.0"]},
-  {links, []}
+  {links, [{"GitHub", "https://github.com/novaframework/stardust.git"}]}
  ]}.
