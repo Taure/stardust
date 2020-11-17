@@ -2,7 +2,7 @@
 [{<<"chatterbox">>,{pkg,<<"ts_chatterbox">>,<<"0.9.1">>},0},
  {<<"firebase_admin">>,
   {git,"https://github.com/Taure/firebase_admin.git",
-       {ref,"7873295ea32f6693a940be6676123e66a16aee67"}},
+       {ref,"2bcbdcbd110629f4dfe914609d2cea2a93d2bf10"}},
   0},
  {<<"hpack">>,{pkg,<<"hpack_erl">>,<<"0.2.3">>},1},
  {<<"jhn_stdlib">>,{pkg,<<"jhn_stdlib">>,<<"3.6.1">>},1},

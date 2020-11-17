@@ -29,7 +29,7 @@
 
 -spec send(binary(), map()) -> list().
 send(ProjectId, FCMobj) ->
-	gen_server:call(?MODULE, {send, {ProjectId, FCMobj}}).
+	gen_server:call(self(), {send, {ProjectId, FCMobj}}).
 
 %%--------------------------------------------------------------------
 %% @doc
@@ -60,7 +60,8 @@ start_link(Args) ->
 			      ignore.
 init([ServiceAccount]) ->
     process_flag(trap_exit, true),
-    gen_server:cast(?MODULE, {start, ServiceAccount}),
+	io:format("hej hej"),
+	self() ! {start, ServiceAccount},
     {ok, #state{service_account = ServiceAccount}}.
 
 %%--------------------------------------------------------------------
@@ -94,6 +95,7 @@ handle_call({send, ProjectId, FCMobj}, _From, State) ->
 			 {noreply, NewState :: term(), hibernate} |
 			 {stop, Reason :: term(), NewState :: term()}.
 handle_cast({start, ServiceAccount}, State) ->
+	io:format("hej hopp"),
     case firebase_oauth2:service_account_fcm(ServiceAccount) of
         #{status := {200, _}, body := Body} ->
             #{<<"access_token">> := Jwt} = json:decode(Body, [maps]),
@@ -121,6 +123,17 @@ handle_cast(Request, State) ->
 			 {noreply, NewState :: term(), Timeout :: timeout()} |
 			 {noreply, NewState :: term(), hibernate} |
 			 {stop, Reason :: normal | term(), NewState :: term()}.
+handle_info({start, ServiceAccount}, State) ->
+	io:format("hej hopp"),
+    case firebase_oauth2:service_account_fcm(ServiceAccount) of
+        #{status := {200, _}, body := Body} ->
+            #{<<"access_token">> := Jwt} = json:decode(Body, [maps]),
+            timer:apply_after(?TTL, gen_server, cast, [{start, ServiceAccount}]),
+            {noreply, State#state{service_account = ServiceAccount, access_token = Jwt}};
+        Reason ->
+            ?WARNING("Failed to auth FCM: ~p", [Reason]),
+            {noreply, State}
+    end;
 handle_info(Info, State) ->
     ?WARNING("UNEXPECTED: ~p State: ~p", [Info, State]),
     {noreply, State}.
