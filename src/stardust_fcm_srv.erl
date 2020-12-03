@@ -99,7 +99,7 @@ handle_cast({start, ServiceAccount}, State) ->
     case firebase_oauth2:service_account_fcm(ServiceAccount) of
         #{status := {200, _}, body := Body} ->
             #{<<"access_token">> := Jwt} = json:decode(Body, [maps]),
-            timer:apply_after(?TTL, gen_server, cast, [{start, ServiceAccount}]),
+            timer:apply_after(?TTL, gen_server, cast, [self(), {start, ServiceAccount}]),
             {noreply, State#state{service_account = ServiceAccount, access_token = Jwt}};
         Reason ->
             ?WARNING("Failed to auth FCM: ~p", [Reason]),
@@ -128,7 +128,7 @@ handle_info({start, ServiceAccount}, State) ->
     case firebase_oauth2:service_account_fcm(ServiceAccount) of
         #{status := {200, _}, body := Body} ->
             #{<<"access_token">> := Jwt} = json:decode(Body, [maps]),
-            timer:apply_after(?TTL, gen_server, cast, [{start, ServiceAccount}]),
+            timer:apply_after(?TTL, gen_server, cast, [self(), {start, ServiceAccount}]),
             {noreply, State#state{service_account = ServiceAccount, access_token = Jwt}};
         Reason ->
             ?WARNING("Failed to auth FCM: ~p", [Reason]),
