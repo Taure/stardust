@@ -57,7 +57,7 @@ init(Args) ->
     Key = proplists:get_value(key, Args),
     Team = proplists:get_value(team, Args),
     P8 = proplists:get_value(p8, Args),
-    gen_server:cast(?SERVER, start),
+    self() ! start,
     {ok,
      #state{team_id = Team,
             p8_key = P8,
@@ -104,10 +104,6 @@ handle_cast({send, DeviceToken, Message, BundleId, ApnsType}, State) ->
     NewState = token(State),
     send_push(State#state.con, DeviceToken, Message, BundleId, ApnsType, NewState),
     {noreply, NewState};
-handle_cast(start, State) ->
-    {ok, {Url, Port}} = application:get_env(stardust, apns_url),
-    NewState = set_ping(State#state{con = connect(Url, Port)}),
-    {noreply, NewState#state{url = erlang:list_to_binary(Url), port = Port}};
 handle_cast(Request, State) ->
     ?WARNING("UNEXPECTED CAST: ~p State: ~p", [Request, State]),
     {noreply, State}.
@@ -123,6 +119,10 @@ handle_cast(Request, State) ->
                      {noreply, NewState :: term(), Timeout :: timeout()} |
                      {noreply, NewState :: term(), hibernate} |
                      {stop, Reason :: normal | term(), NewState :: term()}.
+handle_info(start, State) ->
+    {ok, {Url, Port}} = application:get_env(stardust, apns_url),
+    NewState = set_ping(State#state{con = connect(Url, Port)}),
+    {noreply, NewState#state{url = erlang:list_to_binary(Url), port = Port}};
 handle_info(ping, State) ->
     h2_client:send_ping(State#state.con),
     {noreply, set_ping(State)};
