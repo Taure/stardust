@@ -8,7 +8,7 @@
     poolboy,
     chatterbox
    ]},
-  {env,[{apns_url, {<<"api.push.apple.com">>, 443}}]},
+  {env,[{apns_url, {"api.push.apple.com", 443}}]},
   {licenses, ["Apache 2.0"]},
   {links, [{"GitHub", "https://github.com/novaframework/stardust.git"}]}
  ]}.
