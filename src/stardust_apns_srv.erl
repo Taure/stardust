@@ -230,7 +230,7 @@ send_push(Con, DeviceToken, Message, BundleId, ApnsType, State) ->
 token(#state{ttl = undefined} = State) ->
     new_token(State);
 token(#state{ttl = Time} = State) ->
-    case erlang:monotonic_time(seconds) - Time > 1800 of
+    case erlang:system_time(seconds) - Time > 1800 of
         true ->
             new_token(State);
         false ->
