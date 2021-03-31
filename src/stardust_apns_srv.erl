@@ -230,7 +230,7 @@ send_push(Con, DeviceToken, Message, BundleId, ApnsType, State) ->
 token(#state{ttl = undefined} = State) ->
     new_token(State);
 token(#state{ttl = Time} = State) ->
-    case erlang:system_time(seconds) - Time > 1800 of
+    case erlang:system_time(second) - Time > 1800 of
         true ->
             new_token(State);
         false ->
@@ -238,7 +238,7 @@ token(#state{ttl = Time} = State) ->
     end.
 
 new_token(State) ->
-    Time = erlang:system_time(seconds),
+    Time = erlang:system_time(second),
     Jwt = encode(State#state.team_id, State#state.p8_key, State#state.key_id, Time),
     Token = <<"bearer ", Jwt/binary>>,
     State#state{token = Token, ttl = Time}.
@@ -251,7 +251,7 @@ set_ping(State = #state{ping = Tref}) ->
 
 encode(ISS, Key, KeyId, Time) ->
     Header = json:encode({[{alg, <<"ES256">>}, {typ, <<"JWT">>}, {kid, KeyId}]}, [binary]),
-    Time = erlang:system_time(seconds),
+    Time = erlang:system_time(second),
     Content = json:encode({[{iss, ISS}, {iat, Time}]}, [binary]),
     Data = <<(do_encode(Header))/binary, $., (do_encode(Content))/binary>>,
     ECPrivateKeyPem =
