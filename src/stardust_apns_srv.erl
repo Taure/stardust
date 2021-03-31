@@ -210,7 +210,7 @@ send_push(Con, DeviceToken, Message, BundleId, ApnsType, State) ->
         {'EXIT', Reason, Con} ->
             {error, Reason};
         {'END_STREAM', Id} ->
-            {ok, {RespHeaders, RespBody}} = h2_connection:get_response(Con, Id),
+            {ok, {RespHeaders, RespBody, _}} = h2_connection:get_response(Con, Id),
             case plist:find(<<":status">>, RespHeaders, <<"600">>) of
                 <<"200">> ->
                     ?INFO("Result 200: bundle-id: ~p device-token: ~p, apns-id ~p RespBody: ~p",
